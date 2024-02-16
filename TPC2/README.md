@@ -9,9 +9,12 @@ author: Rui Gonçalves
 
 Converter um ficheiro de Markdown para HTML, nomeadamente:
 
+- Cabeçalhos
+- Listas ordenadas
 - Negrito
 - Itálico
 - Links
 - Imagens
 
-Também foram implementados títulos e linhas horizontais.
+Também foram implementados linhas horizontais e listas desordenadas.
+
