@@ -1,5 +1,5 @@
-import re
-
+from datetime import date
+import json
 import ply.lex as lex
 import sys
 
@@ -9,6 +9,8 @@ tokens = [
     'SELECIONAR',
     'SAIR',
     'SALDO',
+    'NOVO',
+    'STOCK'
 ]
 
 t_LISTAR = r'(?i:listar)'
@@ -33,10 +35,27 @@ def t_MOEDA(t):
     return t
 
 def t_SELECIONAR(t):
-    r'(?i:selecionar\s+(\d+))'
-    t.value = int(t.value[10:])
+    r'(?i:selecionar\s+(\w+))'
+    t.value = t.value.split()[-1]
     return t
 
+def t_NOVO(t):
+    r'(?i:novo\s+(\w+)\s+(\d+)\s+(\d+(.\d{1,2})?)\s+.*)'
+
+    t.value = t.value.split()
+    t.value[2] = int(t.value[2])
+    t.value[3] = float(t.value[3])
+    t.value = (t.value[1], t.value[2], t.value[3], ' '.join(t.value[4:]))
+    
+    return t
+
+def t_STOCK(t):
+    r'(?i:stock\s+(\w+)\s+\d+)'
+
+    t.value = t.value.split()
+    t.value = (t.value[1], int(t.value[2]))
+
+    return t
 
 t_ignore = ' \t\r'
 
@@ -65,65 +84,106 @@ lexer = lex.lex()
 #for tok in lexer:
 #   print(tok)
 
-products = [
-    {
-        'name': 'Agua',
-        'price': (0, 65)
-    },
-    {
-        'name': 'Cafe',
-        'price': (0, 80)
-    },
-    {
-        'name': 'Coca-Cola',
-        'price': (1, 0)
-    },
-    {
-        'name': 'Sumo',
-        'price': (1, 20)
-    },
-    {
-        'name': 'Sandes',
-        'price': (1, 50)
-    },
-    {
-        'name': 'Chocolate',
-        'price': (1, 25)
-    },
-]
+def read_products():
+    with open('data.json', 'r') as file:
+        data = json.load(file)
 
-cur = (0, 0)
+    return {product['cod']: product for product in data}
+
+def write_products():
+    with open('data.json', 'w') as file:
+        json.dump([{"cod": k, **v} for k, v in products.items()], file)
+        
+
+products = read_products()
+
+cur = 0
+
+def novo(cod, nome, qtd, preco):
+    global products
+
+    products[cod] = { "nome": nome, "quant": qtd, "preco": preco }
+
+def stock(cod, qtd):
+    products[cod]["quant"] += qtd
 
 def listar():
-    for i, product in enumerate(products):
-        print(f"{i} - {product['name']} - {product['price'][0]}e{product['price'][1]}c")
+    global products
+
+    print('maq:')
+    print("cod | nome | quantidade | preço")
+    print("-------------------------------")
+
+    for k, v in products.items():
+        print(f"{k} | {v['nome']} | {v['quant']} | {v['preco']}")
+
+    print()
 
 def coin(e, c):
     global cur
 
-    cur = (cur[0] + e, cur[1] + c)
+    cur += e * 100 + c
 
-    if cur[1] >= 100:
-        cur = (cur[0] + 1, cur[1] - 100)
+def saldo():
+    global cur
+    
+    print(f"maq: Saldo = {cur // 100}e{'%02d' % (cur % 100)}c")
 
-def saldo(is_troco=False):
-    if is_troco:
-        print(f"Troco = {cur[0]}e{cur[1]}c")
-    else:
-        print(f"Saldo = {cur[0]}e{cur[1]}c")
+def sair():
+    global cur
+
+    r = ['2e', '1e', '50c', '20c', '10c', '5c', '2c', '1c']
+    m = [200, 100, 50, 20, 10, 5, 2, 1]
+    qtd = [0, 0, 0, 0, 0, 0, 0, 0]
+    i = 0
+    
+    while cur != 0:
+        if cur >= m[i]:
+            qtd[i] += 1
+            cur -= m[i]
+        else:
+            i += 1
+
+    if not all(x == 0 for x in qtd):
+        print('maq: Pode retirar o troco: ', end='')
+
+        for i, t in enumerate(qtd):
+            if t != 0:
+                print(f'{t}x {r[i]}, ', end='')
+
+        print('\b\b.')
+    
+    print("maq: Até à próxima")
+
 
 def select(p):
     global cur
+    global products
 
-    if cur[0] > products[p]['price'][0] or (cur[0] == products[p]['price'][0] and cur[1] >= products[p]['price'][1]):
-        print(f"Vending {products[p]['name']}")
+    if p not in products:
+        print('maq: Produto inexistente')
+        return
 
-        cur = (cur[0] - products[p]['price'][0], cur[1] - products[p]['price'][1])
+    pr = int(products[p]['preco'] * 100)
 
-        if cur[1] < 0:
-            cur = (cur[0] - 1, cur[1] + 100)
+    if products[p]['quant'] <= 0:
+        print('maq: não tem quantidade suficiente')
+    elif cur > pr:
+        print(f'maq: Pode retirar o produto dispensado "{products[p]["nome"]}"')
+
+        products[p]['quant'] -= 1
+        cur -= pr
+
+        saldo()
     else:
-        print("Saldo insuficiente")
+        print("maq: Saldo insufuciente para satisfazer o seu pedido")
+        print(f"maq: Saldo = {cur // 100}e{cur % 100}c; Pedido {pr // 100}e{'%02d' % (pr % 100)}c")
+
+
+print(f'maq: {date.today()}, Stock carregado, Estado atualizado.')
+print('maq: Bom dia. Estou disponível para atender o seu pedido.')
+
+print('>> ', end='', flush=True)
 
 for line in sys.stdin:
     lexer.input(line)
@@ -137,10 +197,16 @@ for line in sys.stdin:
             listar()
         elif tok.type == 'SELECIONAR':
             select(tok.value)
-            saldo()
         elif tok.type == 'SALDO':
             saldo()
         elif tok.type == 'SAIR':
-            saldo(is_troco=True)
+            sair()
+        elif tok.type == 'NOVO':
+            novo(tok.value[0], tok.value[3], tok.value[1], tok.value[2])
+        elif tok.type == 'STOCK':
+            stock(tok.value[0], tok.value[1])
         else:
             print("Comando inválido")
+
+    print('>> ', end='', flush=True)
+
